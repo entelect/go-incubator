@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 
 	config "go-incubator/internal/configuration"
+	"go-incubator/internal/http"
 )
 
 func main() {
@@ -18,7 +20,16 @@ func main() {
 		return
 	}
 
-	fmt.Printf("starting http listener on port %d\n", cfg.HttpPort)
+	httpServer, err := http.NewHttpServer(cfg.HttpPort)
+	if err != nil {
+		fmt.Printf("error creating http server: %v\n", err)
+		return
+	}
+
+	wg := &sync.WaitGroup{}
+	defer wg.Wait()
+	httpServer.Start(wg)
+	defer httpServer.Stop()
 
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt)
