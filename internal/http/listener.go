@@ -16,18 +16,20 @@ import (
 type HttpServer struct {
 	server  *http.Server
 	port    int
+	apiKey  string
 	recipes map[string]Recipe
 }
 
 // NewHttpServer creates and returns a new HttpServer with a listener on the specified port
-func NewHttpServer(port int) (HttpServer, error) {
+func NewHttpServer(port int, apiKey string) (HttpServer, error) {
 	s := HttpServer{server: &http.Server{Addr: fmt.Sprintf(":%d", port)},
 		port:    port,
+		apiKey:  apiKey,
 		recipes: make(map[string]Recipe),
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", s.tracer(http.HandlerFunc(s.router)))
+	mux.Handle("/", s.auth(s.tracer(http.HandlerFunc(s.router))))
 	s.server.Handler = mux
 
 	return s, nil
@@ -193,5 +195,23 @@ func (s *HttpServer) tracer(originalHandler http.Handler) http.Handler {
 		originalHandler.ServeHTTP(w, r)
 		end := time.Now()
 		fmt.Println(endpoint, end.Sub(start))
+	})
+}
+
+// auth checks that API requests contain required API key
+func (s *HttpServer) auth(originalHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys := r.Header["X-Api-Key"]
+		keyfound := false
+		for _, v := range keys {
+			if v == s.apiKey {
+				keyfound = true
+			}
+		}
+		if keyfound {
+			originalHandler.ServeHTTP(w, r)
+		} else {
+			w.WriteHeader(http.StatusUnauthorized)
+		}
 	})
 }

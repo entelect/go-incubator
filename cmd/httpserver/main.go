@@ -20,7 +20,7 @@ func main() {
 		return
 	}
 
-	httpServer, err := http.NewHttpServer(cfg.HttpPort)
+	httpServer, err := http.NewHttpServer(cfg.HttpPort, cfg.ApiKey)
 	if err != nil {
 		fmt.Printf("error creating http server: %v\n", err)
 		return
