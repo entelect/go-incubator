@@ -1,13 +1,50 @@
 package http
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
+
+func captureOutput(f func()) string {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	stdout := os.Stdout
+	stderr := os.Stderr
+	defer func() {
+		os.Stdout = stdout
+		os.Stderr = stderr
+		log.SetOutput(os.Stderr)
+	}()
+	os.Stdout = writer
+	os.Stderr = writer
+	log.SetOutput(writer)
+	out := make(chan string)
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		var buf bytes.Buffer
+		wg.Done()
+		io.Copy(&buf, reader)
+		out <- buf.String()
+	}()
+	wg.Wait()
+	f()
+	writer.Close()
+	return <-out
+}
 
 func TestNewHttpServer(t *testing.T) {
 	type args struct {
@@ -244,6 +281,49 @@ func TestHttpServer_findRecipes(t *testing.T) {
 
 			if w.Code != tt.want.code || w.Body.String() != tt.want.body {
 				t.Errorf("findRecipes() = %v, want %v", response{code: w.Code, body: w.Body.String()}, tt.want)
+			}
+		})
+	}
+}
+
+func TestHttpServer_tracer(t *testing.T) {
+	server, _ := NewHttpServer(1234)
+
+	type args struct {
+		originalHandler http.Handler
+	}
+	tests := []struct {
+		name      string
+		s         *HttpServer
+		args      args
+		wantRegex string
+	}{
+		{
+			name:      "1",
+			s:         &server,
+			args:      args{originalHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})},
+			wantRegex: "GET /tracertest 0s",
+		},
+		{
+			name:      "2",
+			s:         &server,
+			args:      args{originalHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(5 * time.Second) })},
+			wantRegex: `GET /tracertest 5(.\d+)?s`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("GET", "/tracertest", nil)
+
+			got := captureOutput(func() { server.tracer(tt.args.originalHandler).ServeHTTP(w, r) })
+
+			match, err := regexp.MatchString(tt.wantRegex, got)
+			if err != nil {
+				t.Errorf("HttpServer.tracer(): %v", err)
+			}
+			if !match {
+				t.Errorf("HttpServer.tracer() = %v, want %v", got, tt.wantRegex)
 			}
 		})
 	}

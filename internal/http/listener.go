@@ -27,7 +27,7 @@ func NewHttpServer(port int) (HttpServer, error) {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", http.HandlerFunc(s.router))
+	mux.Handle("/", s.tracer(http.HandlerFunc(s.router)))
 	s.server.Handler = mux
 
 	return s, nil
@@ -183,4 +183,15 @@ func (s *HttpServer) findRecipes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write(rsp)
+}
+
+// tracer measures the time it took for each API call to be processed
+func (s *HttpServer) tracer(originalHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpoint := fmt.Sprintf("%s %s", r.Method, r.RequestURI)
+		start := time.Now()
+		originalHandler.ServeHTTP(w, r)
+		end := time.Now()
+		fmt.Println(endpoint, end.Sub(start))
+	})
 }
