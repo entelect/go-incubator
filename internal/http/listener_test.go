@@ -382,3 +382,30 @@ func TestHttpServer_auth(t *testing.T) {
 		})
 	}
 }
+
+func TestHttpServer_stdHeaders(t *testing.T) {
+	server, _ := NewHttpServer(1234, "1234")
+
+	tests := []struct {
+		name string
+		want string
+	}{
+		{
+			name: "1",
+			want: "application/json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("GET", "/headertest", nil)
+			server.stdHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(w, r)
+
+			contentType := w.Header().Values("Content-Type")[0]
+			if contentType != tt.want {
+				t.Errorf("stdHeader() = %v, want %v", contentType, tt.want)
+			}
+		})
+	}
+}

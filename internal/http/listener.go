@@ -29,7 +29,7 @@ func NewHttpServer(port int, apiKey string) (HttpServer, error) {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/", s.auth(s.tracer(http.HandlerFunc(s.router))))
+	mux.Handle("/", s.stdHeaders(s.auth(s.tracer(http.HandlerFunc(s.router)))))
 	s.server.Handler = mux
 
 	return s, nil
@@ -213,5 +213,13 @@ func (s *HttpServer) auth(originalHandler http.Handler) http.Handler {
 		} else {
 			w.WriteHeader(http.StatusUnauthorized)
 		}
+	})
+}
+
+// stdHeaders adds some standard headers into HTTP responses
+func (s *HttpServer) stdHeaders(originalHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		originalHandler.ServeHTTP(w, r)
 	})
 }
