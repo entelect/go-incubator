@@ -8,6 +8,7 @@ import (
 
 type Configuration struct {
 	HttpPort int
+	Address  string
 	ApiKey   string
 }
 
@@ -20,6 +21,12 @@ func ReadConfig(prefix string) (Configuration, error) {
 	}
 
 	cfg.HttpPort = int(port)
+
+	cfg.Address = os.Getenv(prefix + "ADDRESS")
+	if cfg.Address == "" {
+		cfg.Address = "127.0.0.1"
+	}
+
 	cfg.ApiKey = os.Getenv(prefix + "APIKEY")
 
 	return cfg, nil
