@@ -8,6 +8,7 @@ import (
 
 	config "go-incubator/internal/configuration"
 	"go-incubator/internal/http"
+	"go-incubator/internal/persistence/memdb"
 )
 
 func main() {
@@ -20,7 +21,13 @@ func main() {
 		return
 	}
 
-	httpServer, err := http.NewHttpServer(cfg.HttpPort, cfg.ApiKey)
+	db, err := memdb.NewMemDB()
+	if err != nil {
+		fmt.Printf("error creating persistence layer: %v\n", err)
+		return
+	}
+
+	httpServer, err := http.NewHttpServer(cfg.HttpPort, cfg.ApiKey, &db)
 	if err != nil {
 		fmt.Printf("error creating http server: %v\n", err)
 		return

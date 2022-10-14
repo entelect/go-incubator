@@ -104,7 +104,7 @@ func (s *HttpServer) addRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.db.AddRecipe(persistence.Recipe(recipe)) // https://go.dev/ref/spec#Conversions
+	err = s.db.AddRecipe(persistence.Recipe(recipe))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("error writing recipe to database"))
