@@ -4,28 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go-incubator/internal/persistence"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 type HttpServer struct {
-	server  *http.Server
-	port    int
-	apiKey  string
-	recipes map[string]Recipe
+	server *http.Server
+	port   int
+	apiKey string
+	db     persistence.Persistence
 }
 
 // NewHttpServer creates and returns a new HttpServer with a listener on the specified port
-func NewHttpServer(port int, apiKey string) (HttpServer, error) {
+func NewHttpServer(port int, apiKey string, persistence persistence.Persistence) (HttpServer, error) {
 	s := HttpServer{server: &http.Server{Addr: fmt.Sprintf(":%d", port)},
-		port:    port,
-		apiKey:  apiKey,
-		recipes: make(map[string]Recipe),
+		port:   port,
+		apiKey: apiKey,
+		db:     persistence,
 	}
 
 	mux := http.NewServeMux()
@@ -104,7 +104,11 @@ func (s *HttpServer) addRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.recipes[recipe.Name] = recipe
+	err = s.db.AddRecipe(persistence.Recipe(recipe)) // https://go.dev/ref/spec#Conversions
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error writing recipe to database"))
+	}
 }
 
 // getRecipe is the Handler for retrieving a recipe by name
@@ -115,16 +119,22 @@ func (s *HttpServer) getRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recipe, ok := s.recipes[name]
-	if !ok {
+	recipe, err := s.db.GetRecipe(name)
+	if err == persistence.ErrNoResults {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error reading recipe from database"))
+		return
+	}
 
-	rsp, err := json.Marshal(recipe)
+	rsp, err := json.Marshal(Recipe(recipe))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("error marshalling recipe into json"))
+		return
 	}
 
 	w.Write(rsp)
@@ -141,6 +151,7 @@ func (s *HttpServer) findRecipes(w http.ResponseWriter, r *http.Request) {
 	elems := strings.Split(unescaped, "?")
 	if len(elems) > 2 {
 		w.WriteHeader((http.StatusBadRequest))
+		return
 	}
 
 	var params []string
@@ -161,27 +172,24 @@ func (s *HttpServer) findRecipes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// We want to return the list of recipes in alphabetical order (by name)
-	// To do that, we first extract map keys into a slice, then sort the slice,
-	// then iterate over the slice, to obtain map entries in alphabetical order
-	keys := make([]string, 0, len(s.recipes))
-	for k := range s.recipes {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	recipes := make([]Recipe, 0)
-	for _, k := range keys {
-		recipe := s.recipes[k]
-		if recipe.UsesIngredients(ingredients) {
-			recipes = append(recipes, recipe)
-		}
+	dbrecipes, err := s.db.FindRecipes(ingredients)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error reading recipes from database"))
+		return
 	}
 
-	rsp, err := json.Marshal(recipes)
+	// Convert []persistence.Recipe to []Recipe
+	recipes := []Recipe{}
+	for _, r := range dbrecipes {
+		recipes = append(recipes, Recipe(r))
+	}
+
+	rsp, err := json.Marshal(Recipes{Recipes: recipes})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("error marshalling recipes into json"))
+		return
 	}
 
 	w.Write(rsp)

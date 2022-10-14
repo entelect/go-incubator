@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"fmt"
+	"go-incubator/internal/persistence"
 	"io"
 	"log"
 	"net/http"
@@ -10,11 +11,91 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+type mockdb struct {
+	recipes map[string]persistence.Recipe
+}
+
+func NewMockDB() *mockdb {
+	mdb := &mockdb{}
+	mdb.recipes = make(map[string]persistence.Recipe)
+	mdb.recipes["Cheese Fondue"] = persistence.Recipe{Name: "Cheese Fondue", Ingredients: []string{"Gruyere", "Emmental"}}
+	mdb.recipes["Mac & Cheese"] = persistence.Recipe{Name: "Mac & Cheese", Ingredients: []string{"Mozzarella", "Macaroni"}}
+	mdb.recipes["SpagBol"] = persistence.Recipe{Name: "SpagBol", Ingredients: []string{"Spaghetti", "Ground Beef", "Tomato"}}
+	mdb.recipes["BLT"] = persistence.Recipe{Name: "BLT", Ingredients: []string{"Tomato", "Bacon", "Lettuce"}}
+	mdb.recipes["Greek Salad"] = persistence.Recipe{Name: "Greek Salad", Ingredients: []string{"Feta", "Tomato", "Cucumber"}}
+	mdb.recipes["Caprese Salad"] = persistence.Recipe{Name: "Caprese Salad", Ingredients: []string{"Mozzarella", "Tomato"}}
+	mdb.recipes["Meatballs"] = persistence.Recipe{Name: "Meatballs", Ingredients: []string{"Ground Beef", "Tomato"}}
+
+	return mdb
+}
+
+func (db *mockdb) AddRecipe(recipe persistence.Recipe) error {
+	if recipe.Name == "DB Error" {
+		return fmt.Errorf("Database Error")
+	}
+	return nil
+}
+
+func (db *mockdb) GetRecipe(name string) (persistence.Recipe, error) {
+	if name == "DBError" {
+		return persistence.Recipe{}, fmt.Errorf("Database Error")
+	}
+	r, ok := db.recipes[name]
+	if !ok {
+		return persistence.Recipe{}, persistence.ErrNoResults
+	}
+
+	return r, nil
+}
+
+func (db *mockdb) FindRecipes(ingredients []string) ([]persistence.Recipe, error) {
+	if strings.Join(ingredients, "") == "DBError" {
+		return nil, fmt.Errorf("Database Error")
+	}
+
+	keys := make([]string, 0, len(db.recipes))
+	for k := range db.recipes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	recipes := make([]persistence.Recipe, 0)
+	for _, k := range keys {
+		recipe := db.recipes[k]
+		if UsesIngredients(recipe, ingredients) {
+			recipes = append(recipes, recipe)
+		}
+	}
+
+	return recipes, nil
+}
+
+func UsesIngredient(r persistence.Recipe, ingredient string) bool {
+	for _, v := range r.Ingredients {
+		if v == ingredient {
+			return true
+		}
+	}
+
+	return false
+}
+
+func UsesIngredients(r persistence.Recipe, ingredients []string) bool {
+	for _, v := range ingredients {
+		if !UsesIngredient(r, v) {
+			return false
+		}
+	}
+
+	return true
+}
 
 func captureOutput(f func()) string {
 	reader, writer, err := os.Pipe()
@@ -64,8 +145,8 @@ func TestNewHttpServer(t *testing.T) {
 				server: &http.Server{
 					Addr: fmt.Sprintf(":%d", 1234),
 				},
-				apiKey:  "1234",
-				recipes: make(map[string]Recipe),
+				apiKey: "1234",
+				db:     NewMockDB(),
 			},
 		},
 		{
@@ -75,19 +156,19 @@ func TestNewHttpServer(t *testing.T) {
 				server: &http.Server{
 					Addr: fmt.Sprintf(":%d", 1234),
 				},
-				apiKey:  "",
-				recipes: make(map[string]Recipe),
+				apiKey: "",
+				db:     NewMockDB(),
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewHttpServer(tt.args.port, tt.args.apiKey)
+			got, err := NewHttpServer(tt.args.port, tt.args.apiKey, tt.want.db)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewHttpServer() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if got.server.Addr != tt.want.server.Addr || !reflect.DeepEqual(got.recipes, tt.want.recipes) {
+			if got.server.Addr != tt.want.server.Addr || got.apiKey != tt.want.apiKey || !reflect.DeepEqual(got.db, tt.want.db) {
 				t.Errorf("NewHttpServer() = %v, want %v", got, tt.want)
 			}
 		})
@@ -95,7 +176,7 @@ func TestNewHttpServer(t *testing.T) {
 }
 
 func TestHttpServer_addRecipe(t *testing.T) {
-	server, _ := NewHttpServer(1234, "1234")
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
 
 	type response struct {
 		code int
@@ -139,6 +220,14 @@ func TestHttpServer_addRecipe(t *testing.T) {
 				body: `error unmarshalling recipe`,
 			},
 		},
+		{
+			name: "5",
+			body: `{"name":"DB Error","ingredients":["Ground Beef","Tomato"]}`,
+			want: response{
+				code: http.StatusInternalServerError,
+				body: `error writing recipe to database`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -155,14 +244,7 @@ func TestHttpServer_addRecipe(t *testing.T) {
 }
 
 func TestHttpServer_getRecipe(t *testing.T) {
-	server, _ := NewHttpServer(1234, "1234")
-	server.recipes["Cheese Fondue"] = Recipe{Name: "Cheese Fondue", Ingredients: []string{"Gruyere", "Emmental"}}
-	server.recipes["Mac & Cheese"] = Recipe{Name: "Mac & Cheese", Ingredients: []string{"Mozzarella", "Macaroni"}}
-	server.recipes["SpagBol"] = Recipe{Name: "SpagBol", Ingredients: []string{"Spaghetti", "Ground Beef", "Tomato"}}
-	server.recipes["BLT"] = Recipe{Name: "BLT", Ingredients: []string{"Tomato", "Bacon", "Lettuce"}}
-	server.recipes["Greek Salad"] = Recipe{Name: "Greek Salad", Ingredients: []string{"Feta", "Tomato", "Cucumber"}}
-	server.recipes["Caprese Salad"] = Recipe{Name: "Caprese Salad", Ingredients: []string{"Mozzarella", "Tomato"}}
-	server.recipes["Meatballs"] = Recipe{Name: "Meatballs", Ingredients: []string{"Ground Beef", "Tomato"}}
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
 
 	type response struct {
 		code int
@@ -198,6 +280,14 @@ func TestHttpServer_getRecipe(t *testing.T) {
 				code: http.StatusNotFound,
 			},
 		},
+		{
+			name: "4",
+			path: "/recipe/DBError",
+			want: response{
+				code: http.StatusInternalServerError,
+				body: "error reading recipe from database",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -214,14 +304,7 @@ func TestHttpServer_getRecipe(t *testing.T) {
 }
 
 func TestHttpServer_findRecipes(t *testing.T) {
-	server, _ := NewHttpServer(1234, "1234")
-	server.recipes["Cheese Fondue"] = Recipe{Name: "Cheese Fondue", Ingredients: []string{"Gruyere", "Emmental"}}
-	server.recipes["Mac & Cheese"] = Recipe{Name: "Mac & Cheese", Ingredients: []string{"Mozzarella", "Macaroni"}}
-	server.recipes["SpagBol"] = Recipe{Name: "SpagBol", Ingredients: []string{"Spaghetti", "Ground Beef", "Tomato"}}
-	server.recipes["BLT"] = Recipe{Name: "BLT", Ingredients: []string{"Tomato", "Bacon", "Lettuce"}}
-	server.recipes["Greek Salad"] = Recipe{Name: "Greek Salad", Ingredients: []string{"Feta", "Tomato", "Cucumber"}}
-	server.recipes["Caprese Salad"] = Recipe{Name: "Caprese Salad", Ingredients: []string{"Mozzarella", "Tomato"}}
-	server.recipes["Meatballs"] = Recipe{Name: "Meatballs", Ingredients: []string{"Ground Beef", "Tomato"}}
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
 
 	type response struct {
 		code int
@@ -239,7 +322,7 @@ func TestHttpServer_findRecipes(t *testing.T) {
 			path: "/recipes?ingredients=Gruyere,Emmental",
 			want: response{
 				code: http.StatusOK,
-				body: `[{"name":"Cheese Fondue","ingredients":["Gruyere","Emmental"]}]`,
+				body: `{"recipes":[{"name":"Cheese Fondue","ingredients":["Gruyere","Emmental"]}]}`,
 			},
 		},
 		{
@@ -247,7 +330,7 @@ func TestHttpServer_findRecipes(t *testing.T) {
 			path: "/recipes?ingredients=Emmental,Gruyere",
 			want: response{
 				code: http.StatusOK,
-				body: `[{"name":"Cheese Fondue","ingredients":["Gruyere","Emmental"]}]`,
+				body: `{"recipes":[{"name":"Cheese Fondue","ingredients":["Gruyere","Emmental"]}]}`,
 			},
 		},
 		{
@@ -255,7 +338,7 @@ func TestHttpServer_findRecipes(t *testing.T) {
 			path: "/recipes?ingredients=Tomato",
 			want: response{
 				code: http.StatusOK,
-				body: `[{"name":"BLT","ingredients":["Tomato","Bacon","Lettuce"]},{"name":"Caprese Salad","ingredients":["Mozzarella","Tomato"]},{"name":"Greek Salad","ingredients":["Feta","Tomato","Cucumber"]},{"name":"Meatballs","ingredients":["Ground Beef","Tomato"]},{"name":"SpagBol","ingredients":["Spaghetti","Ground Beef","Tomato"]}]`,
+				body: `{"recipes":[{"name":"BLT","ingredients":["Tomato","Bacon","Lettuce"]},{"name":"Caprese Salad","ingredients":["Mozzarella","Tomato"]},{"name":"Greek Salad","ingredients":["Feta","Tomato","Cucumber"]},{"name":"Meatballs","ingredients":["Ground Beef","Tomato"]},{"name":"SpagBol","ingredients":["Spaghetti","Ground Beef","Tomato"]}]}`,
 			},
 		},
 		{
@@ -263,7 +346,7 @@ func TestHttpServer_findRecipes(t *testing.T) {
 			path: "/recipes?ingredients=Tomato,Onion",
 			want: response{
 				code: http.StatusOK,
-				body: `[]`,
+				body: `{"recipes":[]}`,
 			},
 		},
 		{
@@ -272,6 +355,21 @@ func TestHttpServer_findRecipes(t *testing.T) {
 			want: response{
 				code: http.StatusBadRequest,
 				body: `no ingredients specified`,
+			},
+		},
+		{
+			name: "6",
+			path: "/recipes?ingredients=Tomato?Ingredients=Onion",
+			want: response{
+				code: http.StatusBadRequest,
+			},
+		},
+		{
+			name: "7",
+			path: "/recipes?ingredients=DBError",
+			want: response{
+				code: http.StatusInternalServerError,
+				body: "error reading recipes from database",
 			},
 		},
 	}
@@ -290,7 +388,7 @@ func TestHttpServer_findRecipes(t *testing.T) {
 }
 
 func TestHttpServer_tracer(t *testing.T) {
-	server, _ := NewHttpServer(1234, "1234")
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
 
 	type args struct {
 		originalHandler http.Handler
@@ -333,7 +431,7 @@ func TestHttpServer_tracer(t *testing.T) {
 }
 
 func TestHttpServer_auth(t *testing.T) {
-	server, _ := NewHttpServer(1234, "1234")
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
 
 	type response struct {
 		code int
@@ -384,7 +482,7 @@ func TestHttpServer_auth(t *testing.T) {
 }
 
 func TestHttpServer_stdHeaders(t *testing.T) {
-	server, _ := NewHttpServer(1234, "1234")
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
 
 	tests := []struct {
 		name string
@@ -405,6 +503,59 @@ func TestHttpServer_stdHeaders(t *testing.T) {
 			contentType := w.Header().Values("Content-Type")[0]
 			if contentType != tt.want {
 				t.Errorf("stdHeader() = %v, want %v", contentType, tt.want)
+			}
+		})
+	}
+}
+
+func TestHttpServer_router(t *testing.T) {
+	server, _ := NewHttpServer(1234, "1234", NewMockDB())
+
+	type args struct {
+		r *http.Request
+	}
+	type response struct {
+		code int
+		body string
+	}
+	tests := []struct {
+		name string
+		s    *HttpServer
+		args args
+		want response
+	}{
+		{
+			name: "1",
+			s:    &server,
+			args: args{r: httptest.NewRequest("GET", "/invalid", nil)},
+			want: response{code: http.StatusNotFound},
+		},
+		{
+			name: "2",
+			s:    &server,
+			args: args{r: httptest.NewRequest("POST", "/recipe", strings.NewReader(`{"name":"BLT","ingredients":["Tomato","Bacon","Lettuce"]}`))},
+			want: response{code: http.StatusOK},
+		},
+		{
+			name: "3",
+			s:    &server,
+			args: args{r: httptest.NewRequest("GET", "/recipe/BLT", nil)},
+			want: response{code: http.StatusOK, body: `{"name":"BLT","ingredients":["Tomato","Bacon","Lettuce"]}`},
+		},
+		{
+			name: "4",
+			s:    &server,
+			args: args{r: httptest.NewRequest("GET", "/recipes?ingredients=Tomato,Bacon", nil)},
+			want: response{code: http.StatusOK, body: `{"recipes":[{"name":"BLT","ingredients":["Tomato","Bacon","Lettuce"]}]}`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			tt.s.router(w, tt.args.r)
+
+			if w.Code != tt.want.code || w.Body.String() != tt.want.body {
+				t.Errorf("auth() = %v, want %v", response{code: w.Code, body: w.Body.String()}, tt.want)
 			}
 		})
 	}
