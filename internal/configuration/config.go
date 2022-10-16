@@ -10,6 +10,12 @@ type Configuration struct {
 	HttpPort int
 	Address  string
 	ApiKey   string
+	Database DBConfig
+}
+
+type DBConfig struct {
+	DBMS      string
+	ConString string
 }
 
 func ReadConfig(prefix string) (Configuration, error) {
@@ -28,6 +34,11 @@ func ReadConfig(prefix string) (Configuration, error) {
 	}
 
 	cfg.ApiKey = os.Getenv(prefix + "APIKEY")
+
+	cfg.Database = DBConfig{
+		DBMS:      os.Getenv(prefix + "DBMS"),
+		ConString: os.Getenv(prefix + "CONSTRING"),
+	}
 
 	return cfg, nil
 }
