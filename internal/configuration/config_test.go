@@ -9,7 +9,9 @@ import (
 func TestReadConfig(t *testing.T) {
 	os.Setenv("TEST_ADDRESS", "1.1.1.1")
 	os.Setenv("TEST_HTTPPORT", "1234")
+	os.Setenv("TEST_GRPCPORT", "4321")
 	os.Setenv("TEST_APIKEY", "1234")
+	os.Setenv("TEST_DBMS", "inmem")
 	os.Setenv("INVALID_HTTPPORT", "abcd")
 
 	type args struct {
@@ -25,7 +27,7 @@ func TestReadConfig(t *testing.T) {
 			name:    "1",
 			args:    args{prefix: "MISSING_"},
 			want:    Configuration{},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "2",
@@ -37,9 +39,10 @@ func TestReadConfig(t *testing.T) {
 			name: "3",
 			args: args{"TEST_"},
 			want: Configuration{
-				Address:  "1.1.1.1",
 				HttpPort: 1234,
+				GrpcPort: 4321,
 				ApiKey:   "1234",
+				Database: DBConfig{DBMS: "inmem"},
 			},
 			wantErr: false,
 		},
