@@ -26,7 +26,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:    "1",
 			args:    args{prefix: "MISSING_"},
-			want:    Configuration{},
+			want:    Configuration{Address: "127.0.0.1", HttpPort: 80, GrpcPort: 80},
 			wantErr: false,
 		},
 		{
@@ -39,6 +39,7 @@ func TestReadConfig(t *testing.T) {
 			name: "3",
 			args: args{"TEST_"},
 			want: Configuration{
+				Address:  "1.1.1.1",
 				HttpPort: 1234,
 				GrpcPort: 4321,
 				ApiKey:   "1234",
