@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package recipesvc;
+option go_package = "./proto";
+
+import "google/protobuf/empty.proto";
+
+// The recipe service definition
+service RecipeService {
+    // Adds a recipe
+    rpc AddRecipe (Recipe) returns (google.protobuf.Empty) {}
+    
+    // Gets a recipe
+    rpc GetRecipe (RecipeRequest) returns (Recipe) {}
+    
+    // Finds recipes
+    rpc FindRecipes (FindRequest) returns (Recipes) {}
+}
+
+message Recipe {
+    string name = 1;
+    repeated string ingredients = 2;
+}
+
+message Recipes {
+    repeated Recipe recipes = 1;
+}
+
+message RecipeRequest {
+    string name = 1;
+}
+
+message FindRequest {
+    repeated string ingredients = 1;
+}
