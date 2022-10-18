@@ -7,9 +7,12 @@ import (
 	"go-incubator/proto"
 	"net"
 	"sync"
+	"time"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -44,7 +47,7 @@ func (s *GrpcServer) Start(wg *sync.WaitGroup) {
 			return
 		}
 
-		s.server = grpc.NewServer()
+		s.server = grpc.NewServer(grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(s.tracer, s.auth)))
 		proto.RegisterRecipeServiceServer(s.server, &serviceServer{db: s.db})
 
 		fmt.Printf("starting gRPC listener on port %d\n", s.port)
@@ -61,6 +64,30 @@ func (s *GrpcServer) Stop() {
 	if s.server != nil {
 		s.server.Stop()
 	}
+}
+
+// auth checks that API requests contain required API key
+func (s *GrpcServer) auth(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "error retrieving metadata")
+	}
+
+	authHeader, ok := md["x-api-key"]
+	if !ok || authHeader[0] != s.apiKey {
+		return nil, status.Error(codes.Unauthenticated, "authentication failed")
+	}
+
+	return handler(ctx, req)
+}
+
+// tracer measures the time it took for each API call to be processed
+func (s *GrpcServer) tracer(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	defer func(start time.Time) {
+		fmt.Println(info.FullMethod, time.Since(start))
+	}(time.Now())
+
+	return handler(ctx, req)
 }
 
 // server is used to implement RecipeServiceServer

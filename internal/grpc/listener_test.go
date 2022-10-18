@@ -10,11 +10,15 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	pb "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -158,6 +162,114 @@ func TestNewGrpcServer(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewGrpcServer() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGrpcServer_auth(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		req     interface{}
+		info    *grpc.UnaryServerInfo
+		handler grpc.UnaryHandler
+	}
+	tests := []struct {
+		name    string
+		s       *GrpcServer
+		args    args
+		want    interface{}
+		wantErr bool
+	}{
+		{
+			name: "1",
+			s:    &GrpcServer{apiKey: "1234", db: NewMockDB()},
+			args: args{
+				ctx:     metadata.NewIncomingContext(context.Background(), metadata.MD{"x-api-key": []string{"1234"}}),
+				req:     "request1",
+				handler: func(ctx context.Context, req interface{}) (interface{}, error) { return nil, nil },
+			},
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name: "2",
+			s:    &GrpcServer{apiKey: "1111", db: NewMockDB()},
+			args: args{
+				ctx:     metadata.NewIncomingContext(context.Background(), metadata.MD{"x-api-key": []string{"1234"}}),
+				req:     "request2",
+				handler: func(ctx context.Context, req interface{}) (interface{}, error) { return nil, nil },
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "3",
+			s:    &GrpcServer{apiKey: "1234", db: NewMockDB()},
+			args: args{
+				ctx:     context.Background(),
+				req:     "request3",
+				handler: func(ctx context.Context, req interface{}) (interface{}, error) { return nil, nil },
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.s.auth(tt.args.ctx, tt.args.req, tt.args.info, tt.args.handler)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GrpcServer.auth() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GrpcServer.auth() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGrpcServer_tracer(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		req     interface{}
+		info    *grpc.UnaryServerInfo
+		handler grpc.UnaryHandler
+	}
+	tests := []struct {
+		name      string
+		s         *GrpcServer
+		args      args
+		wantRegex string
+	}{
+		{
+			name: "1",
+			s:    &GrpcServer{apiKey: "1234", db: NewMockDB()},
+			args: args{ctx: context.Background(), req: "request1", info: &grpc.UnaryServerInfo{FullMethod: "test method"}, handler: func(ctx context.Context, req interface{}) (interface{}, error) {
+				return nil, nil
+			}},
+			wantRegex: `test method 0(.\d+)?s\n`,
+		},
+		{
+			name: "2",
+			s:    &GrpcServer{apiKey: "1234", db: NewMockDB()},
+			args: args{ctx: context.Background(), req: "request1", info: &grpc.UnaryServerInfo{FullMethod: "test method"}, handler: func(ctx context.Context, req interface{}) (interface{}, error) {
+				time.Sleep(5 * time.Second)
+				return nil, nil
+			}},
+			wantRegex: `test method 5(.\d+)?s\n`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := captureOutput(func() { tt.s.tracer(tt.args.ctx, tt.args.req, tt.args.info, tt.args.handler) })
+
+			match, err := regexp.MatchString(tt.wantRegex, got)
+			if err != nil {
+				t.Errorf("GrpcServer.tracer(): %v", err)
+			}
+			if !match {
+				t.Errorf("GrpcServer.tracer() = %v, want %v", got, tt.wantRegex)
 			}
 		})
 	}
