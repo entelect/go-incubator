@@ -4,17 +4,31 @@ package recipesvc;
 option go_package = "./proto";
 
 import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
 
 // The recipe service definition
 service RecipeService {
     // Adds a recipe
-    rpc AddRecipe (Recipe) returns (google.protobuf.Empty) {}
+    rpc AddRecipe (Recipe) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/recipe"
+            body: "*"
+        };
+    }
     
     // Gets a recipe
-    rpc GetRecipe (RecipeRequest) returns (Recipe) {}
+    rpc GetRecipe (RecipeRequest) returns (Recipe) {
+        option (google.api.http) = {
+            get: "/recipe/{name}"
+        };
+    }
     
     // Finds recipes
-    rpc FindRecipes (FindRequest) returns (Recipes) {}
+    rpc FindRecipes (FindRequest) returns (Recipes) {
+        option (google.api.http) = {
+            get: "/recipes"
+        };
+    }
 }
 
 message Recipe {
