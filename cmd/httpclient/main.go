@@ -6,6 +6,7 @@ import (
 	"go-incubator/internal/helpers"
 	"go-incubator/internal/http"
 	"go-incubator/internal/ui"
+	"time"
 )
 
 func main() {
@@ -22,7 +23,7 @@ func main() {
 	}
 
 	for {
-		action := ui.Selection("What would you like to do?", []string{"Add a recipe", "Get a recipe", "Search by ingredients", "Quit"})
+		action := ui.Selection("What would you like to do?", []string{"Add a recipe", "Get a recipe", "Search by ingredients", "Run Benchmarks", "Quit"})
 		fmt.Println()
 
 		switch action {
@@ -92,6 +93,8 @@ func main() {
 					}
 				}
 			}
+		case "Run Benchmarks":
+			httpClient.Benchmarks(1 * time.Minute)
 		case "Quit":
 			fmt.Println("OK bye")
 			return
