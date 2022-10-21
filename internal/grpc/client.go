@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"go-incubator/internal/http"
 	"go-incubator/proto"
+	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -108,4 +110,55 @@ func (c *GrpcClient) SearchByIngredients(ingredients []string) ([]http.Recipe, e
 	}
 
 	return recipes, nil
+}
+
+func (c *GrpcClient) Benchmarks(duration time.Duration) {
+	numRoutines := 100
+	fmt.Printf("Calling SearchByIngredients([]string{\"Tomato\"}) on %d concurrent routines for %s, please wait\n", numRoutines, duration)
+	fmt.Println("┎──────────────────────────────────────────────────────────┒")
+
+	done := make(chan interface{})
+	cntchan := make(chan int, numRoutines)
+	counter := 0
+	var wg sync.WaitGroup
+	wg.Add(numRoutines)
+	defer wg.Wait()
+
+	for i := 0; i < numRoutines; i++ {
+		go func(cnt chan int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+					c.SearchByIngredients([]string{"Tomato"})
+					cnt <- 1
+				}
+			}
+		}(cntchan)
+	}
+
+	go func(c chan int) {
+		for i := range c {
+			counter = counter + i
+		}
+	}(cntchan)
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				fmt.Print(".")
+				time.Sleep(1 * time.Second)
+			}
+		}
+	}()
+
+	time.Sleep(duration)
+	close(done)
+
+	fmt.Printf("\nSearchByIngredients([]string{\"Tomato\"}) called %d times in %s\n\n", counter, duration)
 }
