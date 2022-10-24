@@ -8,7 +8,7 @@ import "google/api/annotations.proto";
 
 // The recipe service definition
 service RecipeService {
-    // Adds a recipe
+    // Adds or updates a recipe
     rpc AddRecipe (Recipe) returns (google.protobuf.Empty) {
         option (google.api.http) = {
             post: "/recipe"
@@ -16,14 +16,14 @@ service RecipeService {
         };
     }
     
-    // Gets a recipe
+    // Gets a recipe by name
     rpc GetRecipe (RecipeRequest) returns (Recipe) {
         option (google.api.http) = {
             get: "/recipe/{name}"
         };
     }
     
-    // Finds recipes
+    // Finds recipes based on list of ingredients
     rpc FindRecipes (FindRequest) returns (Recipes) {
         option (google.api.http) = {
             get: "/recipes"
@@ -31,19 +31,28 @@ service RecipeService {
     }
 }
 
+// Recipe
 message Recipe {
+    // Name of recipe
     string name = 1;
+    // Array of ingredients comprising the recipe
     repeated string ingredients = 2;
 }
 
+// Recipes
 message Recipes {
+    // Array of recipes
     repeated Recipe recipes = 1;
 }
 
+// Recipe Request
 message RecipeRequest {
+    // Name of recipe
     string name = 1;
 }
 
+// Find Request
 message FindRequest {
+    // Array of ingredients to include in search
     repeated string ingredients = 1;
 }

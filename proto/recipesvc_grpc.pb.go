@@ -23,11 +23,11 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RecipeServiceClient interface {
-	// Adds a recipe
+	// Adds or updates a recipe
 	AddRecipe(ctx context.Context, in *Recipe, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// Gets a recipe
+	// Gets a recipe by name
 	GetRecipe(ctx context.Context, in *RecipeRequest, opts ...grpc.CallOption) (*Recipe, error)
-	// Finds recipes
+	// Finds recipes based on list of ingredients
 	FindRecipes(ctx context.Context, in *FindRequest, opts ...grpc.CallOption) (*Recipes, error)
 }
 
@@ -70,11 +70,11 @@ func (c *recipeServiceClient) FindRecipes(ctx context.Context, in *FindRequest, 
 // All implementations should embed UnimplementedRecipeServiceServer
 // for forward compatibility
 type RecipeServiceServer interface {
-	// Adds a recipe
+	// Adds or updates a recipe
 	AddRecipe(context.Context, *Recipe) (*emptypb.Empty, error)
-	// Gets a recipe
+	// Gets a recipe by name
 	GetRecipe(context.Context, *RecipeRequest) (*Recipe, error)
-	// Finds recipes
+	// Finds recipes based on list of ingredients
 	FindRecipes(context.Context, *FindRequest) (*Recipes, error)
 }
 

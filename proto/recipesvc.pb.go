@@ -22,12 +22,15 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Recipe
 type Recipe struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Name        string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Name of recipe
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Array of ingredients comprising the recipe
 	Ingredients []string `protobuf:"bytes,2,rep,name=ingredients,proto3" json:"ingredients,omitempty"`
 }
 
@@ -77,11 +80,13 @@ func (x *Recipe) GetIngredients() []string {
 	return nil
 }
 
+// Recipes
 type Recipes struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Array of recipes
 	Recipes []*Recipe `protobuf:"bytes,1,rep,name=recipes,proto3" json:"recipes,omitempty"`
 }
 
@@ -124,11 +129,13 @@ func (x *Recipes) GetRecipes() []*Recipe {
 	return nil
 }
 
+// Recipe Request
 type RecipeRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Name of recipe
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 }
 
@@ -171,11 +178,13 @@ func (x *RecipeRequest) GetName() string {
 	return ""
 }
 
+// Find Request
 type FindRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Array of ingredients to include in search
 	Ingredients []string `protobuf:"bytes,1,rep,name=ingredients,proto3" json:"ingredients,omitempty"`
 }
 
