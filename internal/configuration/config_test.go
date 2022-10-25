@@ -12,7 +12,8 @@ func TestReadConfig(t *testing.T) {
 	os.Setenv("TEST_GRPCPORT", "4321")
 	os.Setenv("TEST_APIKEY", "1234")
 	os.Setenv("TEST_DBMS", "inmem")
-	os.Setenv("INVALID_HTTPPORT", "abcd")
+	os.Setenv("INVALID1_HTTPPORT", "abcd")
+	os.Setenv("INVALID2_GRPCPORT", "abcd")
 
 	type args struct {
 		prefix string
@@ -31,12 +32,18 @@ func TestReadConfig(t *testing.T) {
 		},
 		{
 			name:    "2",
-			args:    args{"INVALID_"},
+			args:    args{"INVALID1_"},
 			want:    Configuration{},
 			wantErr: true,
 		},
 		{
-			name: "3",
+			name:    "3",
+			args:    args{"INVALID2_"},
+			want:    Configuration{},
+			wantErr: true,
+		},
+		{
+			name: "4",
 			args: args{"TEST_"},
 			want: Configuration{
 				Address:  "1.1.1.1",

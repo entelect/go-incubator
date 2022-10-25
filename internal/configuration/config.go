@@ -29,7 +29,7 @@ func ReadConfig(prefix string) (Configuration, error) {
 	}
 	port, err := strconv.ParseInt(p, 10, 64)
 	if err != nil {
-		return cfg, fmt.Errorf("unable to parse value for %sHTTPPORT (%s)", prefix, os.Getenv(prefix+"HTTPPORT"))
+		return Configuration{}, fmt.Errorf("unable to parse value for %sHTTPPORT (%s)", prefix, os.Getenv(prefix+"HTTPPORT"))
 	}
 	cfg.HttpPort = int(port)
 
@@ -40,7 +40,7 @@ func ReadConfig(prefix string) (Configuration, error) {
 	}
 	port, err = strconv.ParseInt(p, 10, 64)
 	if err != nil {
-		return cfg, fmt.Errorf("unable to parse value for %sGRPCPORT (%s)", prefix, os.Getenv(prefix+"GRPCPORT"))
+		return Configuration{}, fmt.Errorf("unable to parse value for %sGRPCPORT (%s)", prefix, os.Getenv(prefix+"GRPCPORT"))
 	}
 	cfg.GrpcPort = int(port)
 
